@@ -30,15 +30,17 @@ var ac_ctl = [];
 var ac_ctlHover = "", ac_ctlDown = "";
 var ac_npHover = false;
 
-var ac_colBg, ac_colTxt, ac_colSub, ac_colFaint, ac_colAcc;
+var ac_colBg, ac_colTxt, ac_colSub, ac_colFaint, ac_colGhost, ac_colAcc;
 var ac_fArt  = gdi.Font("Microsoft YaHei UI", AC_F_ART, 1);
 var ac_fTime = gdi.Font("Microsoft YaHei UI", AC_F_TIME, 0);
 var ac_fRow  = gdi.Font("Microsoft YaHei UI", AC_F_ROW, 0);
 var ac_fNum  = gdi.Font("Microsoft YaHei UI", AC_F_NUM, 0);
+var ac_fQ    = gdi.Font("Microsoft YaHei UI", 12, 1);
 
 var AC_L = 0x4 | 0x20 | 0x800 | 0x8000;
 var AC_R = AC_L | 0x2;
 var AC_C = AC_L | 0x1;
+var MF_STRING = 0x0;
 
 var AC_TF_KEY   = fb.TitleFormat("[%album artist%]|$if2(%album%,'(单曲)')|[%date%]");
 var AC_TF_ART   = fb.TitleFormat("$if2(%album artist%,$if2(%artist%,'未知艺术家'))");
@@ -58,6 +60,7 @@ function ac_colors() {
 	ac_colAcc = (typeof AMBER_ACCENT != "undefined" && AMBER_ACCENT) ? AMBER_ACCENT : window.GetColourDUI(ColorTypeDUI.highlight);
 	ac_colSub   = blendColors(ac_colBg, ac_colTxt, 0.55);
 	ac_colFaint = blendColors(ac_colBg, ac_colTxt, 0.32);
+	ac_colGhost = blendColors(ac_colBg, ac_colTxt, 0.24);
 }
 
 function ac_bgParts() {
@@ -99,6 +102,7 @@ function ac_build(pl, seedIdx) {
 		var tbr = AC_TF_BR.EvalWithMetadb(h);
 		ac_tracks.push({
 			idx: i,
+			metadb: h,
 			num: AC_TF_NUM.EvalWithMetadb(h),
 			title: AC_TF_TITLE.EvalWithMetadb(h),
 			len: AC_TF_LEN.EvalWithMetadb(h),
@@ -186,15 +190,16 @@ function ac_goHome() {
 	ac_build(pp, loc.PlaylistItemIndex);
 }
 
-// 播放顺序图标 (顺序/循环/乱序)
-function ac_drawOrder(gr, cx, cy) {
+// 播放顺序按钮组 (顺序/循环/随机, 当前模式选中带下划线)
+function ac_ordIcon(gr, id, mode, cx, cy) {
 	var order = plman.PlaybackOrder;
-	var col = (ac_ctlHover === "order") ? ac_colAcc : (order !== 0 ? blendColors(ac_colBg, ac_colAcc, 0.85) : blendColors(ac_colBg, ac_colTxt, 0.50));
-	var s = z(9);
-	if (order === 1 || order === 2) {
+	var isCur = (mode === 0 && order === 0) || (mode === 1 && (order === 1 || order === 2)) || (mode === 4 && order >= 3);
+	var col = isCur ? ac_colAcc : (ac_ctlHover === id ? blendColors(ac_colBg, ac_colAcc, 0.70) : blendColors(ac_colBg, ac_colTxt, 0.38));
+	var s = z(8);
+	if (mode === 1) {
 		gr.DrawEllipse(cx - s, cy - s + z(1), s * 2, s * 2 - z(2), z(2), col);
 		gr.FillPolygon(col, 0, [cx + s - z(2), cy - s - z(3), cx + s + z(5), cy - s + z(2), cx + s - z(6), cy - s + z(5)]);
-	} else if (order >= 3) {
+	} else if (mode === 4) {
 		gr.DrawLine(cx - s, cy + s - z(3), cx + s - z(3), cy - s + z(3), z(2), col);
 		gr.DrawLine(cx - s, cy - s + z(3), cx + s - z(3), cy + s - z(3), z(2), col);
 		gr.FillPolygon(col, 0, [cx + s + z(3), cy - s + z(3), cx + s - z(4), cy - s, cx + s - z(2), cy - s + z(7)]);
@@ -203,7 +208,12 @@ function ac_drawOrder(gr, cx, cy) {
 		gr.DrawLine(cx - s, cy, cx + s - z(4), cy, z(2), col);
 		gr.FillPolygon(col, 0, [cx + s + z(1), cy, cx + s - z(6), cy - z(5), cx + s - z(6), cy + z(5)]);
 	}
-	ac_ctl.push({ id: "order", x: cx - z(16), y: cy - z(16), w: z(32), h: z(32) });
+	ac_ctl.push({ id: id, x: cx - z(15), y: cy - z(17), w: z(30), h: z(36) });
+}
+function ac_drawOrder(gr, baseX, cy) {
+	ac_ordIcon(gr, "ord0", 0, baseX - z(72), cy);
+	ac_ordIcon(gr, "ord1", 1, baseX - z(36), cy);
+	ac_ordIcon(gr, "ord4", 4, baseX, cy);
 }
 
 function ac_ctlAt(x, y) {
@@ -276,11 +286,16 @@ function on_paint(gr) {
 			gr.FillSolidRect(L - z(8), ry, acW - L - R + z(16), rowH, (ac_colAcc & 0x00FFFFFF) | 0x16000000);
 			gr.FillSolidRect(L - z(14), ry + z(7), z(3), rowH - z(14), ac_colAcc);
 		}
+		var q = plman.FindPlaybackQueueItemIndex(t.metadb, ac_pl, t.idx) + 1;
+		if (q > 0) {
+			gr.FillEllipse(z(3), ry + Math.round(rowH / 2) - z(9), z(18), z(18), ac_colAcc);
+			gr.GdiDrawText(String(q), ac_fQ, ac_colBg, z(3), ry + Math.round(rowH / 2) - z(9), z(18), z(18), AC_C);
+		}
 		var tcol = t.isPlaying ? ac_colAcc : blendColors(ac_colBg, ac_colTxt, 0.88);
 		gr.GdiDrawText(t.num, ac_fNum, ac_colFaint, L, ry, numW, rowH, AC_L);
 		gr.GdiDrawText(t.title, ac_fRow, tcol, titleX, ry, titleW, rowH, AC_L);
 		gr.GdiDrawText(t.year, ac_fNum, ac_colFaint, yrX, ry, yrW, rowH, AC_R);
-		gr.GdiDrawText(t.cod, ac_fNum, ac_colFaint, techX, ry, techW, rowH, AC_L);
+		gr.GdiDrawText(t.cod, ac_fNum, ac_colGhost, techX, ry, techW, rowH, AC_L);
 		gr.GdiDrawText(t.br, ac_fNum, ac_colFaint, techX, ry, techW, rowH, AC_R);
 		gr.GdiDrawText(t.len, ac_fNum, ac_colSub, lenX, ry, lenW, rowH, AC_R);
 	}
@@ -328,10 +343,9 @@ function on_mouse_lbtn_up(x, y) {
 		if (c === "prev") fb.Prev();
 		else if (c === "play") fb.PlayOrPause();
 		else if (c === "next") fb.Next();
-		else if (c === "order") {
-			var o = plman.PlaybackOrder;
-			plman.PlaybackOrder = (o === 0) ? 1 : (o === 1 ? 4 : 0);
-		}
+		else if (c === "ord0") plman.PlaybackOrder = 0;
+		else if (c === "ord1") plman.PlaybackOrder = 1;
+		else if (c === "ord4") plman.PlaybackOrder = 4;
 	} else if (!c && ac_npHover) ac_goHome();
 	if (ac_ctlDown) { ac_ctlDown = ""; window.Repaint(); }
 }
@@ -352,6 +366,27 @@ function on_mouse_lbtn_dblclk(x, y) {
 	plman.ExecutePlaylistDefaultAction(ac_pl, ac_tracks[ti].idx);
 }
 
+// 原生右键菜单 (与 foobar2000 原版一致: 移除/队列/标签/转换/属性...)
+function on_mouse_rbtn_up(x, y) {
+	var ti = ac_rowAt(x, y);
+	if (ti < 0 || ac_pl < 0) return;
+	var t = ac_tracks[ti];
+	plman.ClearPlaylistSelection(ac_pl);
+	plman.SetPlaylistSelectionSingle(ac_pl, t.idx, true);
+	plman.SetPlaylistFocusItem(ac_pl, t.idx);
+	var sel = plman.GetPlaylistSelectedItems(ac_pl);
+	var menu = window.CreatePopupMenu();
+	var Context = fb.CreateContextMenuManager();
+	Context.InitContext(sel);
+	menu.AppendMenuItem(MF_STRING, 1, "移除");
+	menu.AppendMenuSeparator();
+	Context.BuildMenu(menu, 10, -1);
+	var ret = menu.TrackPopupMenu(x, y);
+	if (ret === 1) plman.RemovePlaylistSelection(ac_pl, false);
+	else if (ret >= 10) Context.ExecuteByID(ret - 10);
+	return true;
+}
+
 // ---------- 回调 ----------
 function on_notify_data(name, info) {
 	if (name === "cf_album" && info && info.length >= 2) ac_build(info[0], info[1]);
@@ -367,6 +402,7 @@ function on_playback_new_track() { ac_updPlaying(); }
 function on_playback_time() { window.RepaintRect(Math.max(0, acW - z(240)), 0, z(240), z(70)); }
 function on_playback_pause() { window.Repaint(); }
 function on_playback_order_changed() { window.Repaint(); }
+function on_playback_queue_changed() { window.Repaint(); }
 function on_playback_starting() { window.Repaint(); }
 function on_playback_stop(reason) { if (reason !== 2) ac_updPlaying(); }
 

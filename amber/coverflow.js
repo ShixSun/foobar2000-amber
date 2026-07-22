@@ -304,6 +304,33 @@ function on_mouse_lbtn_dblclk(x, y) {
 	if (i >= 0 && i === Math.round(cf_pos)) cf_play(i);
 }
 
+// 整张专辑的原生右键菜单 (播放/队列/标签/转换/属性 作用于全部曲目)
+function cf_albumHandles(i) {
+	var a = cf_albums[i];
+	var res = plman.GetPlaylistItems(-1);
+	if (!a || cf_srcPl < 0) return res;
+	var list = plman.GetPlaylistItems(cf_srcPl);
+	for (var k = 0; k < list.Count; k++) {
+		if (CF_TF_KEY.EvalWithMetadb(list[k]) === a.key) res.Add(list[k]);
+	}
+	return res;
+}
+
+function on_mouse_rbtn_up(x, y) {
+	var i = cf_hitTest(x, y);
+	if (i < 0) return;
+	cf_touchUser();
+	var handles = cf_albumHandles(i);
+	if (!handles.Count) return;
+	var menu = window.CreatePopupMenu();
+	var Context = fb.CreateContextMenuManager();
+	Context.InitContext(handles);
+	Context.BuildMenu(menu, 10, -1);
+	var ret = menu.TrackPopupMenu(x, y);
+	if (ret >= 10) Context.ExecuteByID(ret - 10);
+	return true;
+}
+
 function on_key_down(vkey) {
 	var n = cf_albums.length;
 	if (!n) return;
